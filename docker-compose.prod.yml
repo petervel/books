@@ -30,6 +30,7 @@ services:
       DB_NAME: bookshelf
       JWT_SECRET: ${JWT_SECRET}
       PORT: 3001
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
     depends_on:
       db:
         condition: service_healthy
@@ -42,6 +43,7 @@ services:
       dockerfile: Dockerfile.prod
       args:
         VITE_API_URL: /api
+        VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
     restart: unless-stopped
     networks:
       - web

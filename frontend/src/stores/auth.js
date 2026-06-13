@@ -24,6 +24,14 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem('user', JSON.stringify(data.user));
   }
 
+  async function loginWithGoogle(credential) {
+    const { data } = await api.post('/auth/google', { credential });
+    token.value = data.token;
+    user.value = data.user;
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('user', JSON.stringify(data.user));
+  }
+
   function logout() {
     token.value = null;
     user.value = null;
@@ -31,5 +39,5 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('user');
   }
 
-  return { token, user, isAuthenticated, login, register, logout };
+  return { token, user, isAuthenticated, login, register, loginWithGoogle, logout };
 });

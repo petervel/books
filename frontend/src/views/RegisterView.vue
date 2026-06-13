@@ -42,6 +42,11 @@
           </button>
         </form>
 
+        <div class="divider"><span>or</span></div>
+
+        <div ref="googleBtnRef" class="google-btn-wrapper"></div>
+        <div v-if="googleError" class="error-msg">{{ googleError }}</div>
+
         <p class="switch-link">
           Already have an account? <RouterLink to="/login">Sign in</RouterLink>
         </p>
@@ -51,7 +56,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth.js';
 
@@ -62,7 +67,9 @@ const username = ref('');
 const email = ref('');
 const password = ref('');
 const error = ref('');
+const googleError = ref('');
 const loading = ref(false);
+const googleBtnRef = ref(null);
 
 async function handleRegister() {
   error.value = '';
@@ -76,6 +83,28 @@ async function handleRegister() {
     loading.value = false;
   }
 }
+
+onMounted(() => {
+  if (window.google && import.meta.env.VITE_GOOGLE_CLIENT_ID) {
+    window.google.accounts.id.initialize({
+      client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+      callback: async (response) => {
+        googleError.value = '';
+        try {
+          await auth.loginWithGoogle(response.credential);
+          router.push('/search');
+        } catch (err) {
+          googleError.value = err.response?.data?.error || 'Google sign-up failed';
+        }
+      },
+    });
+    window.google.accounts.id.renderButton(googleBtnRef.value, {
+      theme: 'outline',
+      size: 'large',
+      width: '368',
+    });
+  }
+});
 </script>
 
 <style scoped>
@@ -141,5 +170,26 @@ h2 { font-family: var(--font-display); font-size: 2rem; color: var(--ink); margi
 .spinner.small { width: 18px; height: 18px; border-width: 2px; }
 .switch-link { text-align: center; margin-top: 1.5rem; color: var(--muted); font-size: 0.9rem; }
 .switch-link a { color: var(--gold); font-weight: 500; }
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 1.25rem 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+}
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(0,0,0,0.1);
+}
+.google-btn-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 0.5rem;
+}
 @media (max-width: 768px) { .auth-page { grid-template-columns: 1fr; } .auth-decoration { display: none; } }
 </style>
