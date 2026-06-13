@@ -14,6 +14,8 @@ const routes = [
       { path: 'favorites', component: () => import('../views/FavoritesView.vue') },
       { path: 'reading-list', component: () => import('../views/ReadingListView.vue') },
       { path: 'discover', component: () => import('../views/DiscoverView.vue') },
+      { path: 'book/:key(.*)', component: () => import('../views/BookDetailView.vue') },
+      { path: 'author/:key', component: () => import('../views/AuthorView.vue') },
     ],
   },
 ];

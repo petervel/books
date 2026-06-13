@@ -5,8 +5,8 @@
 
       <div class="search-controls">
         <div class="search-tabs">
-          <button :class="['tab', activeTab === 'books' ? 'active' : '']" @click="activeTab = 'books'">Books</button>
-          <button :class="['tab', activeTab === 'authors' ? 'active' : '']" @click="activeTab = 'authors'">Authors</button>
+          <button :class="['tab', activeTab === 'books' ? 'active' : '']" @click="switchTab('books')">Books</button>
+          <button :class="['tab', activeTab === 'authors' ? 'active' : '']" @click="switchTab('authors')">Authors</button>
         </div>
 
         <div class="search-bar">
@@ -14,7 +14,7 @@
             v-model="query"
             class="input-field search-input"
             :placeholder="activeTab === 'books' ? 'Search books by title, author...' : 'Search authors by name...'"
-            @keyup.enter="performSearch"
+            @keyup.enter="performSearch(1)"
           />
           <select v-if="activeTab === 'books'" v-model="language" class="input-field lang-select">
             <option value="">Any language</option>
@@ -27,7 +27,7 @@
             <option value="por">Portuguese</option>
             <option value="jpn">Japanese</option>
           </select>
-          <button class="btn btn-primary" @click="performSearch" :disabled="loading">
+          <button class="btn btn-primary" @click="performSearch(1)" :disabled="loading">
             {{ loading ? '...' : 'Search' }}
           </button>
         </div>
@@ -65,16 +65,20 @@
       <p class="result-count">{{ total.toLocaleString() }} results</p>
       <div class="authors-grid">
         <div v-for="author in authors" :key="author.key" class="author-card card">
-          <div class="author-photo">
-            <img
-              v-if="author.photos?.length"
-              :src="`https://covers.openlibrary.org/a/id/${author.photos[0]}-M.jpg`"
-              :alt="author.name"
-            />
-            <div v-else class="photo-placeholder">✍️</div>
-          </div>
+          <RouterLink :to="`/author/${author.key.replace('/authors/', '')}`" class="author-photo-link">
+            <div class="author-photo">
+              <img
+                v-if="author.photos?.length"
+                :src="`https://covers.openlibrary.org/a/id/${author.photos[0]}-M.jpg`"
+                :alt="author.name"
+              />
+              <div v-else class="photo-placeholder">✍️</div>
+            </div>
+          </RouterLink>
           <div class="author-info">
-            <h3>{{ author.name }}</h3>
+            <RouterLink :to="`/author/${author.key.replace('/authors/', '')}`" class="author-name-link">
+              <h3>{{ author.name }}</h3>
+            </RouterLink>
             <p v-if="author.birthDate" class="author-meta">Born {{ author.birthDate }}</p>
             <p v-if="author.topWork" class="author-meta top-work">{{ author.topWork }}</p>
             <p v-if="author.workCount" class="author-meta">{{ author.workCount }} works</p>
@@ -112,7 +116,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import api from '../composables/useApi.js';
 import { useBooksStore } from '../stores/books.js';
 import BookCard from '../components/BookCard.vue';
@@ -132,6 +136,24 @@ const loading = ref(false);
 const error = ref('');
 const searched = ref(false);
 const readModalBook = ref(null);
+
+let debounceTimer = null;
+
+watch(query, (val) => {
+  clearTimeout(debounceTimer);
+  if (val.trim().length >= 2) {
+    debounceTimer = setTimeout(() => performSearch(1), 400);
+  }
+});
+
+watch(language, () => {
+  if (query.value.trim()) performSearch(1);
+});
+
+function switchTab(tab) {
+  activeTab.value = tab;
+  if (query.value.trim()) performSearch(1);
+}
 
 async function performSearch(p = 1) {
   if (!query.value.trim()) return;
@@ -291,17 +313,17 @@ async function handleToggleAuthorFavorite(author) {
   padding: 16px;
 }
 
-.author-photo {
-  flex-shrink: 0;
-  width: 72px;
-}
+.author-photo-link { flex-shrink: 0; text-decoration: none; }
 
 .author-photo img {
   width: 72px;
   height: 90px;
   object-fit: cover;
   border-radius: 4px;
+  transition: opacity var(--transition);
 }
+
+.author-photo img:hover { opacity: 0.85; }
 
 .photo-placeholder {
   width: 72px;
@@ -315,11 +337,17 @@ async function handleToggleAuthorFavorite(author) {
   border: 1px solid var(--border);
 }
 
+.author-name-link { text-decoration: none; }
+
 .author-info h3 {
   font-family: var(--font-display);
   font-size: 1rem;
   margin-bottom: 4px;
+  color: var(--ink);
+  transition: color var(--transition);
 }
+
+.author-name-link:hover h3 { color: var(--gold); }
 
 .author-meta {
   font-size: 0.8rem;

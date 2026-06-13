@@ -1,7 +1,7 @@
 <template>
   <div class="discover-view">
     <div class="discover-header">
-      <h1 class="section-title">For You</h1>
+      <h1 class="section-title">Discover</h1>
       <p class="subtitle">Swipe or use buttons to save books to your favorites</p>
     </div>
 
@@ -65,8 +65,12 @@
             <h2 class="card-title">{{ book.book_title || book.title }}</h2>
             <p class="card-author">by {{ book.book_author }}</p>
 
-            <p v-if="book.description" class="card-desc">{{ book.description }}</p>
-            <p v-else class="card-desc no-desc">No description available for this book.</p>
+            <template v-if="index === 0">
+              <p v-if="topCardDescription" class="card-desc">{{ topCardDescription }}</p>
+              <p v-else class="card-desc no-desc">
+                {{ loadingDesc ? 'Loading description...' : 'No description available for this book.' }}
+              </p>
+            </template>
           </div>
         </div>
       </div>
@@ -92,22 +96,43 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import api from '../composables/useApi.js';
 
 const deck = ref([]);
 const loading = ref(true);
 const error = ref('');
-const currentIndex = ref(0);
 const toast = ref({ show: false, message: '', type: 'success' });
 
-// Drag state
 const isDragging = ref(false);
 const startX = ref(0);
 const swipeDir = ref(0);
 const stackRef = ref(null);
 
+const topCardDescription = ref('');
+const loadingDesc = ref(false);
+
 const visibleCards = computed(() => deck.value.slice(0, 3));
+
+watch(
+  () => deck.value[0],
+  async (book) => {
+    topCardDescription.value = '';
+    if (!book) return;
+    const key = book.book_key || book.key;
+    if (!key) return;
+    loadingDesc.value = true;
+    try {
+      const { data } = await api.get(`/books/details${key}`);
+      topCardDescription.value = data.description || '';
+    } catch (_) {
+      topCardDescription.value = '';
+    } finally {
+      loadingDesc.value = false;
+    }
+  },
+  { immediate: true }
+);
 
 async function loadRecommendations() {
   loading.value = true;

@@ -1,6 +1,6 @@
 <template>
   <div class="book-card card">
-    <div class="cover-wrapper">
+    <div class="cover-wrapper" @click="goToDetail">
       <img
         v-if="book.coverId"
         :src="`https://covers.openlibrary.org/b/id/${book.coverId}-M.jpg`"
@@ -12,11 +12,11 @@
         <span>📚</span>
       </div>
     </div>
-    
+
     <div class="book-info">
-      <h3 class="book-title">{{ book.title }}</h3>
+      <h3 class="book-title" @click="goToDetail">{{ book.title }}</h3>
       <p class="book-author">{{ authorDisplay }}</p>
-      
+
       <div class="book-meta">
         <span v-if="book.firstPublishYear" class="tag">{{ book.firstPublishYear }}</span>
         <span v-if="book.languages?.length" class="tag">{{ book.languages[0] }}</span>
@@ -30,15 +30,24 @@
       </div>
 
       <div class="book-actions">
-        <button 
+        <button
           class="btn btn-sm"
           :class="isFavorite ? 'btn-gold' : 'btn-outline'"
           @click.stop="$emit('toggle-favorite', book)"
         >
           {{ isFavorite ? '❤️ Saved' : '♡ Save' }}
         </button>
-        
-        <button 
+
+        <button
+          class="btn btn-sm"
+          :class="isQueued ? 'btn-primary' : 'btn-outline'"
+          @click.stop="handleToggleQueue"
+          :disabled="queueLoading"
+        >
+          {{ isQueued ? '✓ Queued' : '📚 Queue' }}
+        </button>
+
+        <button
           class="btn btn-sm"
           :class="readEntry ? 'btn-primary' : 'btn-outline'"
           @click.stop="$emit('toggle-read', book)"
@@ -51,7 +60,8 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { useBooksStore } from '../stores/books.js';
 
 const props = defineProps({
@@ -61,6 +71,8 @@ const props = defineProps({
 defineEmits(['toggle-favorite', 'toggle-read']);
 
 const store = useBooksStore();
+const router = useRouter();
+const queueLoading = ref(false);
 
 const authorDisplay = computed(() =>
   Array.isArray(props.book.authors)
@@ -68,8 +80,36 @@ const authorDisplay = computed(() =>
     : props.book.bookAuthor || props.book.book_author || ''
 );
 
-const isFavorite = computed(() => store.isBookFavorite(props.book.key || props.book.book_key));
-const readEntry = computed(() => store.isBookRead(props.book.key || props.book.book_key));
+const bookKey = computed(() => props.book.key || props.book.book_key || '');
+const isFavorite = computed(() => store.isBookFavorite(bookKey.value));
+const readEntry = computed(() => store.isBookRead(bookKey.value));
+const isQueued = computed(() => !!store.isInQueue(bookKey.value));
+
+function goToDetail() {
+  if (!bookKey.value) return;
+  const key = bookKey.value.startsWith('/') ? bookKey.value : `/${bookKey.value}`;
+  router.push({
+    path: `/book${key}`,
+    query: {
+      c: props.book.coverId || props.book.cover_id,
+      a: (props.book.authors || [props.book.book_author]).filter(Boolean).slice(0, 3).join('|'),
+      aks: (props.book.authorKeys || []).slice(0, 3).join('|'),
+    },
+  });
+}
+
+async function handleToggleQueue() {
+  queueLoading.value = true;
+  try {
+    if (isQueued.value) {
+      await store.removeFromQueue(bookKey.value);
+    } else {
+      await store.addToQueue(props.book);
+    }
+  } finally {
+    queueLoading.value = false;
+  }
+}
 </script>
 
 <style scoped>
@@ -88,6 +128,7 @@ const readEntry = computed(() => store.isBookRead(props.book.key || props.book.b
 .cover-wrapper {
   flex-shrink: 0;
   width: 70px;
+  cursor: pointer;
 }
 
 .cover-img {
@@ -96,7 +137,10 @@ const readEntry = computed(() => store.isBookRead(props.book.key || props.book.b
   object-fit: cover;
   border-radius: 4px;
   box-shadow: 2px 2px 8px var(--shadow);
+  transition: opacity var(--transition);
 }
+
+.cover-img:hover { opacity: 0.85; }
 
 .cover-placeholder {
   width: 70px;
@@ -126,7 +170,10 @@ const readEntry = computed(() => store.isBookRead(props.book.key || props.book.b
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+  cursor: pointer;
 }
+
+.book-title:hover { color: var(--gold); }
 
 .book-author {
   font-size: 0.85rem;

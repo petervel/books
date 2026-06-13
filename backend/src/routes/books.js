@@ -5,7 +5,6 @@ import { authenticate } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Identified axios instance — OL gives higher rate limit to apps with a User-Agent
 const olClient = axios.create({
   baseURL: 'https://openlibrary.org',
   timeout: 12000,
@@ -14,9 +13,6 @@ const olClient = axios.create({
   },
 });
 
-/**
- * OL description/bio can be a plain string or { type: '/type/text', value: '...' }.
- */
 function extractText(field) {
   if (!field) return '';
   if (typeof field === 'string') return field;
@@ -25,18 +21,6 @@ function extractText(field) {
 }
 
 // ─── Search books ─────────────────────────────────────────────────────────────
-// GET /search.json
-// Docs: https://openlibrary.org/dev/docs/api/search
-//
-// Rules learned from the live API and OL source:
-//  • `fields` must only contain valid Solr schema field names.
-//    Invalid names → 422 Unprocessable Entity.
-//    Confirmed valid: key, title, author_name, author_key, cover_i,
-//    first_publish_year, language, subject, edition_count, has_fulltext, ia
-//    NOT valid (cause 422): first_sentence, ratings_average, ratings_count
-//  • `author` is a real dedicated query param — use it instead of q-embedding.
-//  • `lang` is the dedicated language filter param (e.g. "eng", "fre").
-//  • `key` in results is the FULL path "/works/OL45804W" per the API docs example.
 router.get('/search', authenticate, async (req, res) => {
   try {
     const { q, author, language } = req.query;
@@ -55,12 +39,11 @@ router.get('/search', authenticate, async (req, res) => {
 
     if (q) params.q = q.trim();
     if (author) params.author = author.trim();
-    if (language) params.lang = language.trim(); // dedicated lang filter param
+    if (language) params.lang = language.trim();
 
     const { data } = await olClient.get('/search.json', { params });
 
     const books = (data.docs || []).map(b => ({
-      // key is the full path in search results e.g. "/works/OL45804W"
       key: b.key.startsWith('/works/') ? b.key : `/works/${b.key}`,
       title: b.title,
       authors: b.author_name || [],
@@ -83,12 +66,8 @@ router.get('/search', authenticate, async (req, res) => {
 });
 
 // ─── Get work details ─────────────────────────────────────────────────────────
-// GET /works/{id}.json
-// Docs: https://openlibrary.org/dev/docs/api/books
-// key must be the full work path e.g. /works/OL45804W
 router.get('/details/:workKey(*)', authenticate, async (req, res) => {
   try {
-    // Express gives us everything after /details/ — ensure /works/ prefix
     let key = '/' + req.params.workKey.replace(/^\/+/, '');
     if (!key.startsWith('/works/')) key = `/works/${key.replace(/^\//, '')}`;
 
@@ -101,6 +80,7 @@ router.get('/details/:workKey(*)', authenticate, async (req, res) => {
       subjects: (data.subjects || []).slice(0, 8),
       firstPublishDate: data.first_publish_date || null,
       covers: data.covers || [],
+      authorKeys: (data.authors || []).map(a => a.author?.key).filter(Boolean),
     });
   } catch (err) {
     const detail = err.response?.data ? JSON.stringify(err.response.data).slice(0, 200) : '';
@@ -110,8 +90,6 @@ router.get('/details/:workKey(*)', authenticate, async (req, res) => {
 });
 
 // ─── Get author details ───────────────────────────────────────────────────────
-// GET /authors/{id}.json
-// key must be /authors/OL23919A (no human-readable slug — those don't support .json)
 router.get('/author/:authorKey(*)', authenticate, async (req, res) => {
   try {
     let key = '/' + req.params.authorKey.replace(/^\/+/, '');
@@ -134,8 +112,6 @@ router.get('/author/:authorKey(*)', authenticate, async (req, res) => {
 });
 
 // ─── Get works by author ──────────────────────────────────────────────────────
-// GET /authors/{id}/works.json?limit=&offset=
-// Returns { entries: [...], size: N }
 router.get('/author-works/:authorKey(*)', authenticate, async (req, res) => {
   try {
     let key = '/' + req.params.authorKey.replace(/^\/+/, '');
@@ -152,6 +128,7 @@ router.get('/author-works/:authorKey(*)', authenticate, async (req, res) => {
       covers: w.covers || [],
       firstPublishDate: w.first_publish_date || null,
       subjects: (w.subjects || []).slice(0, 5),
+      editionCount: w.edition_count || null,
     }));
 
     res.json({ works, size: data.size || works.length });
@@ -225,6 +202,78 @@ router.delete('/read/:bookKey(*)', authenticate, async (req, res) => {
     [req.user.id, decodeURIComponent(req.params.bookKey)]
   );
   res.json({ success: true });
+});
+
+// ─── Reading queue ────────────────────────────────────────────────────────────
+
+router.get('/queue', authenticate, async (req, res) => {
+  const [rows] = await pool.execute(
+    'SELECT * FROM reading_queue WHERE user_id = ? ORDER BY priority DESC, added_at ASC',
+    [req.user.id]
+  );
+  res.json(rows);
+});
+
+router.post('/queue', authenticate, async (req, res) => {
+  try {
+    const { bookKey, bookTitle, bookAuthor, coverId, firstPublishYear, priority } = req.body;
+    await pool.execute(
+      'INSERT IGNORE INTO reading_queue (user_id, book_key, book_title, book_author, cover_id, first_publish_year, priority) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [req.user.id, bookKey, bookTitle, bookAuthor || null, coverId || null, firstPublishYear || null, priority || 2]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Add to queue error:', err.message);
+    res.status(500).json({ error: 'Could not add to queue' });
+  }
+});
+
+router.patch('/queue/:bookKey(*)', authenticate, async (req, res) => {
+  try {
+    const { priority } = req.body;
+    await pool.execute(
+      'UPDATE reading_queue SET priority = ? WHERE user_id = ? AND book_key = ?',
+      [priority, req.user.id, decodeURIComponent(req.params.bookKey)]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Update queue priority error:', err.message);
+    res.status(500).json({ error: 'Could not update priority' });
+  }
+});
+
+router.delete('/queue/:bookKey(*)', authenticate, async (req, res) => {
+  await pool.execute(
+    'DELETE FROM reading_queue WHERE user_id = ? AND book_key = ?',
+    [req.user.id, decodeURIComponent(req.params.bookKey)]
+  );
+  res.json({ success: true });
+});
+
+// ─── Not interested ───────────────────────────────────────────────────────────
+
+router.get('/not-interested', authenticate, async (req, res) => {
+  const [rows] = await pool.execute(
+    `SELECT book_key FROM swipe_decisions WHERE user_id = ? AND decision = 'dislike'`,
+    [req.user.id]
+  );
+  res.json(rows.map(r => r.book_key));
+});
+
+router.post('/not-interested', authenticate, async (req, res) => {
+  try {
+    const { bookKey } = req.body;
+    await pool.execute(
+      `INSERT INTO swipe_decisions (user_id, book_key, decision)
+       VALUES (?, ?, 'dislike')
+       ON DUPLICATE KEY UPDATE decision = 'dislike'`,
+      [req.user.id, bookKey]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Not interested error:', err.message);
+    res.status(500).json({ error: 'Could not mark as not interested' });
+  }
 });
 
 export default router;

@@ -59,7 +59,22 @@ CREATE TABLE IF NOT EXISTS swipe_decisions (
   UNIQUE KEY unique_user_swipe (user_id, book_key)
 );
 
+CREATE TABLE IF NOT EXISTS reading_queue (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  book_key VARCHAR(255) NOT NULL,
+  book_title VARCHAR(500) NOT NULL,
+  book_author VARCHAR(500),
+  cover_id VARCHAR(50),
+  first_publish_year INT,
+  priority TINYINT DEFAULT 2,
+  added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE KEY unique_user_queue (user_id, book_key)
+);
+
 CREATE INDEX idx_read_books_user ON read_books(user_id);
 CREATE INDEX idx_favorite_books_user ON favorite_books(user_id);
 CREATE INDEX idx_favorite_authors_user ON favorite_authors(user_id);
 CREATE INDEX idx_swipe_decisions_user ON swipe_decisions(user_id);
+CREATE INDEX idx_reading_queue_user ON reading_queue(user_id);

@@ -11,19 +11,10 @@ const olClient = axios.create({
   headers: { 'User-Agent': 'Bookshelf/1.0 (openlibrary@example.com)' },
 });
 
-// Search results return full paths e.g. "/works/OL45804W" but normalise defensively
 function normaliseWorkKey(key) {
   if (!key) return key;
   if (key.startsWith('/works/')) return key;
   return `/works/${key}`;
-}
-
-// OL description/bio can be a plain string or { type, value }
-function extractText(field) {
-  if (!field) return '';
-  if (typeof field === 'string') return field;
-  if (typeof field === 'object' && field.value) return field.value;
-  return '';
 }
 
 // Get recommendations for swipe interface
@@ -31,16 +22,18 @@ router.get('/', authenticate, async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // Books the user has already swiped on
     const [swiped] = await pool.execute(
       'SELECT book_key FROM swipe_decisions WHERE user_id = ?',
       [userId]
     );
     const swipedKeys = new Set(swiped.map(s => s.book_key));
 
-    // Highly rated books from other users (collaborative filtering)
     const [popularBooks] = await pool.execute(
-      `SELECT rb.book_key, rb.book_title, rb.book_author, rb.cover_id, rb.first_publish_year,
+      `SELECT rb.book_key,
+              ANY_VALUE(rb.book_title) as book_title,
+              ANY_VALUE(rb.book_author) as book_author,
+              ANY_VALUE(rb.cover_id) as cover_id,
+              ANY_VALUE(rb.first_publish_year) as first_publish_year,
               AVG(rb.rating) as avg_rating, COUNT(*) as read_count
        FROM read_books rb
        WHERE rb.user_id != ? AND rb.rating >= 4
@@ -50,9 +43,12 @@ router.get('/', authenticate, async (req, res) => {
       [userId]
     );
 
-    // Books liked (swiped right) by other users
     const [likedByOthers] = await pool.execute(
-      `SELECT sd.book_key, fb.book_title, fb.book_author, fb.cover_id, fb.first_publish_year,
+      `SELECT sd.book_key,
+              ANY_VALUE(fb.book_title) as book_title,
+              ANY_VALUE(fb.book_author) as book_author,
+              ANY_VALUE(fb.cover_id) as cover_id,
+              ANY_VALUE(fb.first_publish_year) as first_publish_year,
               COUNT(*) as like_count
        FROM swipe_decisions sd
        LEFT JOIN favorite_books fb ON fb.book_key = sd.book_key
@@ -63,7 +59,6 @@ router.get('/', authenticate, async (req, res) => {
       [userId]
     );
 
-    // Merge candidates, skipping already-swiped books
     const candidates = new Map();
     [...popularBooks, ...likedByOthers].forEach(b => {
       if (b.book_key && !swipedKeys.has(b.book_key) && !candidates.has(b.book_key)) {
@@ -71,10 +66,6 @@ router.get('/', authenticate, async (req, res) => {
       }
     });
 
-    // Cold-start fallback: fetch popular books from a random subject via OL search.
-    // Only use confirmed valid Solr field names to avoid 422 errors.
-    // `subject` is a dedicated query param (not embedded in `q`).
-    // `sort=editions` sorts by edition count — a reliable popularity proxy.
     if (candidates.size < 10) {
       const subjects = ['fiction', 'mystery', 'fantasy', 'biography', 'science'];
       const subject = subjects[Math.floor(Math.random() * subjects.length)];
@@ -108,20 +99,8 @@ router.get('/', authenticate, async (req, res) => {
       }
     }
 
-    // Fetch descriptions from the Works REST API for top candidates
     const topCandidates = Array.from(candidates.values()).slice(0, 20);
-    const enriched = await Promise.all(
-      topCandidates.map(async (book) => {
-        try {
-          const { data } = await olClient.get(`${book.book_key}.json`);
-          return { ...book, description: extractText(data.description).slice(0, 300) };
-        } catch (_) {
-          return { ...book, description: '' };
-        }
-      })
-    );
-
-    res.json(enriched);
+    res.json(topCandidates);
   } catch (err) {
     console.error('Recommendation error:', err.message);
     res.status(500).json({ error: 'Could not generate recommendations' });

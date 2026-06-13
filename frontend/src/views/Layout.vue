@@ -6,7 +6,7 @@
       <div class="nav-links">
         <RouterLink to="/search" class="nav-item">
           <span class="nav-icon">🔍</span>
-          <span>Discover</span>
+          <span>Search</span>
         </RouterLink>
         <RouterLink to="/favorites" class="nav-item">
           <span class="nav-icon">❤️</span>
@@ -18,7 +18,7 @@
         </RouterLink>
         <RouterLink to="/discover" class="nav-item">
           <span class="nav-icon">✨</span>
-          <span>For You</span>
+          <span>Discover</span>
         </RouterLink>
       </div>
 
@@ -34,10 +34,22 @@
     </nav>
 
     <div class="mobile-nav">
-      <RouterLink to="/search" class="mob-item">🔍</RouterLink>
-      <RouterLink to="/favorites" class="mob-item">❤️</RouterLink>
-      <RouterLink to="/reading-list" class="mob-item">📖</RouterLink>
-      <RouterLink to="/discover" class="mob-item">✨</RouterLink>
+      <RouterLink to="/search" class="mob-item">
+        <span class="mob-icon">🔍</span>
+        <span class="mob-label">Search</span>
+      </RouterLink>
+      <RouterLink to="/favorites" class="mob-item">
+        <span class="mob-icon">❤️</span>
+        <span class="mob-label">Favorites</span>
+      </RouterLink>
+      <RouterLink to="/reading-list" class="mob-item">
+        <span class="mob-icon">📖</span>
+        <span class="mob-label">Reading</span>
+      </RouterLink>
+      <RouterLink to="/discover" class="mob-item">
+        <span class="mob-icon">✨</span>
+        <span class="mob-label">Discover</span>
+      </RouterLink>
     </div>
 
     <main class="main-content">
@@ -181,20 +193,36 @@ function handleLogout() {
   left: 0;
   right: 0;
   background: var(--ink);
-  padding: 10px 0;
+  padding: 6px 0 8px;
   z-index: 100;
   justify-content: space-around;
 }
 
 .mob-item {
-  padding: 8px 16px;
-  font-size: 1.4rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 16px;
   border-radius: var(--radius);
   transition: background var(--transition);
+  text-decoration: none;
 }
 
 .mob-item.router-link-active {
   background: rgba(201,168,76,0.2);
+}
+
+.mob-icon { font-size: 1.3rem; }
+
+.mob-label {
+  font-size: 0.65rem;
+  color: rgba(245,240,232,0.6);
+  letter-spacing: 0.02em;
+}
+
+.mob-item.router-link-active .mob-label {
+  color: var(--gold-light);
 }
 
 @media (max-width: 768px) {
